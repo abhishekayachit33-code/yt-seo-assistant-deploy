@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: yt-seo-assistant
-          image: docker.io/abhishekayachit/yt-seo-assistant:latest
+          image: docker.io/abhishekayachit/yt-seo-assistant:26b562f
           ports:
             - containerPort: 8501
           envFrom:
