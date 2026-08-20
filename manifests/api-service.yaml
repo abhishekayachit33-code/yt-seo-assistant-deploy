@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: yt-seo-api
+  namespace: yt-seo
+spec:
+  # NodePort, not ClusterIP: the browser calls this API directly (the React
+  # app's fetches run client-side), so it has to be reachable from outside
+  # the cluster, not only from the web pod.
+  type: NodePort
+  selector:
+    app: yt-seo-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30800

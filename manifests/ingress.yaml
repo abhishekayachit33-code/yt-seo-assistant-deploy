@@ -1,0 +1,55 @@
+# One hostname fronting both services, so the browser-facing API address is
+# a stable path on the same origin rather than a node IP and port.
+#
+# This is not cosmetic. NEXT_PUBLIC_API_URL is inlined into the client bundle
+# at BUILD time, so whatever address the browser must call has to be known
+# when the web image is built. Baking a NodePort address (192.168.49.2:30800)
+# fails outright on the docker driver, where the node IP is not routable from
+# the host -- the pods are healthy, the services answer in-cluster, and every
+# call from the user's browser still times out. A hostname keeps that value
+# stable and environment-independent: only this Ingress changes per cluster.
+#
+# The backend is mounted at /api/v1, NOT /api. Next.js serves NextAuth's own
+# handlers at /api/auth/*, so routing all of /api to FastAPI would swallow
+# /api/auth/session and /api/auth/callback and break sign-in entirely, while
+# every page still rendered and both pods stayed healthy.
+#
+# Local setup (docker driver): `minikube tunnel` binds the controller on
+# 127.0.0.1:80, then add to /etc/hosts:
+#     127.0.0.1  ytseo.local
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: yt-seo
+  namespace: yt-seo
+  annotations:
+    # Strips the /api/v1 prefix before proxying: the FastAPI app serves
+    # /auth, /analyze and the rest at the root and does not know it is
+    # mounted under a prefix.
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Transcript fetches plus several model calls run inside one /analyze
+    # request; the 60s default cuts it off mid-flight and the browser sees a
+    # 504 while the work continues server-side.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ytseo.local
+      http:
+        paths:
+          - path: /api/v1(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: yt-seo-api
+                port:
+                  number: 8000
+          # Catch-all last: the web app, including its own /api/auth/* routes.
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: yt-seo-web
+                port:
+                  number: 3000

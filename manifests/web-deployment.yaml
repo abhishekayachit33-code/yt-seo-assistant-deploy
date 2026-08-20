@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yt-seo-web
+  namespace: yt-seo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yt-seo-web
+  template:
+    metadata:
+      labels:
+        app: yt-seo-web
+    spec:
+      containers:
+        - name: yt-seo-web
+          image: docker.io/abhishekayachit/yt-seo-web:latest
+          ports:
+            - containerPort: 3000
+          env:
+            # Server-side only (NextAuth's credentials provider calling
+            # /auth/login from inside the pod), so the in-cluster service
+            # name is correct here.
+            - name: API_URL
+              value: "http://yt-seo-api:8000"
+            # NEXT_PUBLIC_* is inlined into the client bundle at BUILD time,
+            # so setting it here does NOT change what the browser calls -- it
+            # is recorded only so the value is visible next to the image built
+            # with it. Changing it requires rebuilding the web image with a
+            # new --build-arg; see the Jenkinsfile. Served through the ingress
+            # on the same origin, so no CORS preflight and no node address.
+            - name: NEXT_PUBLIC_API_URL
+              value: "http://ytseo.local/api/v1"
+            # Auth.js refuses requests in production unless it can trust the
+            # Host header it builds callback URLs from. Without this the page
+            # renders and the auth gate still redirects, but
+            # /api/auth/session 500s and client-side session reads break.
+            - name: AUTH_TRUST_HOST
+              value: "true"
+          envFrom:
+            # Supplies AUTH_SECRET. Same secret as the API for one place to
+            # rotate, even though the web pod needs only that one key.
+            - secretRef:
+                name: yt-seo-secrets
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              # /login rather than /: everything else is behind the auth
+              # proxy and answers 307, which a probe would treat as healthy
+              # for the wrong reason. /login is public and returns a real 200.
+              path: /login
+              port: 3000
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /login
+              port: 3000
+            initialDelaySeconds: 15

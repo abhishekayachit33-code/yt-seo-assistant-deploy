@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yt-seo-api
+  namespace: yt-seo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: yt-seo-api
+  template:
+    metadata:
+      labels:
+        app: yt-seo-api
+    spec:
+      containers:
+        - name: yt-seo-api
+          image: docker.io/abhishekayachit/yt-seo-api:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: yt-seo-secrets
+          env:
+            # Browser-origin allowlist for CORS. The ingress host, because
+            # the request originates in the user's browser -- not the
+            # in-cluster service name, which the browser never sees.
+            - name: CORS_ORIGINS
+              value: "http://ytseo.local"
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          readinessProbe:
+            httpGet:
+              # No dedicated health endpoint on the API; /openapi.json is
+              # served by FastAPI itself, needs no database, and returns 200
+              # only once the app has fully constructed its routes.
+              path: /openapi.json
+              port: 8000
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: 8000
+            initialDelaySeconds: 15
